@@ -1,0 +1,502 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "metadata": {
+        "_generator": {
+            "name": "bicep",
+            "version": "0.17.1.54307",
+            "templateHash": "1543618559284229187"
+        }
+    },
+    "parameters": {
+        "name": {
+            "type": "string",
+            "metadata": {
+                "description": "The name of the Azure Container App."
+            }
+        },
+        "containerImage": {
+            "type": "string",
+            "defaultValue": "community.opengroup.org:5555/osdu/ui/admin-ui-group/admin-ui-totalenergies/admin-ui-totalenergies/admin-ui-totalenergies-main:latest",
+            "metadata": {
+                "description": "The container image to use. See [OSDU Forum Admin UI Container Registry](https://community.opengroup.org/osdu/ui/admin-ui-group/admin-ui-totalenergies/admin-ui-totalenergies/container_registry) for available images."
+            }
+        },
+        "workloadProfile": {
+            "type": "string",
+            "defaultValue": "Consumption",
+            "allowedValues": [
+                "Consumption",
+                "Premium"
+            ],
+            "metadata": {
+                "description": "The workload profile to use for the container app. Consumption uses the `Consumption` profile, while Premium uses the `D4` profile. [Learn more](https://learn.microsoft.com/en-us/azure/container-apps/workload-profiles-overview#profile-types)."
+            }
+        },
+        "osduEndpoint": {
+            "type": "string",
+            "defaultValue": "https://<your-adme-instance>.energy.azure.com/",
+            "metadata": {
+                "description": "The ADME endpoint to connect to."
+            },
+            "minLength": 26,
+            "maxLength": 41
+        },
+        "dataPartitionId": {
+            "type": "string",
+            "defaultValue": "opendes",
+            "metadata": {
+                "description": "The data partition ID to use."
+            },
+            "minLength": 1,
+            "maxLength": 31
+        },
+        "entitlementsDomainName": {
+            "type": "string",
+            "defaultValue": ".dataservices.energy",
+            "metadata": {
+                "description": "The domain name to use for entitlements. For Azure Data Manager for Energy, use `.dataservices.energy`."
+            }
+        },
+        "clientId": {
+            "type": "string",
+            "defaultValue": "",
+            "metadata": {
+                "description": "The app registration (client id) to use for the Admin UI."
+            },
+            "minLength": 36,
+            "maxLength": 36
+        },
+        "scope": {
+            "type": "string",
+            "defaultValue": "[concat(parameters('clientId'), '/.default')]",
+            "metadata": {
+                "description": "The scope of the ADME instance. Format: <adme-client-id>/.default."
+            },
+            "minLength": 37
+        },
+        "connectorEndpoint": {
+            "type": "string",
+            "defaultValue": "",
+            "metadata": {
+                "description": "*Optional:* The [connector API](https://community.opengroup.org/osdu/ui/admin-ui-group/admin-ui-totalenergies/connector-api-totalenergies) endpoint to use for the Admin UI."
+            }
+        },
+        "enablePrivateNetwork": {
+            "type": "bool",
+            "defaultValue": false,
+            "metadata": {
+                "description": "Enable private network for the service. This will deploy a virtual network which all resources are joined to."
+            }
+        },
+        "enableLogging": {
+            "type": "bool",
+            "defaultValue": false,
+            "metadata": {
+                "description": "Enable Application Insights and a Log Analytics Workspace. Basic logging capabilities is enabled by default, but this will retain logs for a longer period, make them queryable etc."
+            }
+        }
+    },
+    "variables": {
+        "appInsightsName": "[concat(parameters('name'), '-appinsights')]",
+        "appInsightsResourceID": "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]",
+        "connectorEndpoint": "[if(endsWith(parameters('connectorEndpoint'), '/'), parameters('connectorEndpoint'), concat(parameters('connectorEndpoint'), '/'))]",
+        "containerAppName": "[parameters('name')]",
+        "containerName": "[concat(parameters('name'), '-container')]",
+        "containerAppResourceID": "[resourceId('Microsoft.App/containerApps', variables('containerAppName'))]",
+        "environmentName": "[concat(parameters('name'), '-env')]",
+        "environmentResourceID": "[resourceId('Microsoft.App/managedEnvironments', variables('environmentName'))]",
+        "logAnalyticsName": "[concat(parameters('name'), '-loganalytics')]",
+        "logAnalyticsResourceID": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]",
+        "logAnalyticsPrivateEndpointName": "[concat(parameters('name'), '-loganalytics-pe')]",
+        "logAnalyticsPrivateEndpointID": "[resourceId('Microsoft.Network/privateEndpoints', variables('logAnalyticsPrivateEndpointName'))]",
+        "logAnalyticsNicName": "[concat(parameters('name'), '-loganalytics-nic')]",
+        "logAnalyticsPrivateLinkScopeName": "[concat(parameters('name'), '-loganalytics-pls')]",
+        "vnetName": "[concat(parameters('name'), '-vnet')]",
+        "nsgContainerAppName": "[concat(parameters('name'), '-container-nsg')]",
+        "nsgLogAnalyticsName": "[concat(parameters('name'), '-loganalytics-nsg')]",
+        "osduEndpoint": "[if(endsWith(parameters('osduEndpoint'), '/'), parameters('osduEndpoint'), concat(parameters('osduEndpoint'), '/'))]",
+        "privateDnsZoneID": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.monitor.azure.com')]",
+        "snetContainerAppAddressPrefix": "10.0.0.0/23",
+        "snetContainerAppName": "[concat(parameters('name'), '-container-snet')]",
+        "snetContainerAppResourceID": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('snetContainerAppName'))]",
+        "snetLogAnalyticsName": "[concat(parameters('name'), '-loganalytics-snet')]",
+        "snetLogAnalyticsAddressPrefix": "10.0.2.0/24",
+        "snetLogAnalyticsResourceID": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('snetLogAnalyticsName'))]",
+        "vnetAddressPrefix": "10.0.0.0/16",
+        "vnetResourceID": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "condition": "[parameters('enablePrivateNetwork')]",
+            "apiVersion": "2021-02-01",
+            "name": "[variables('vnetName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[variables('vnetAddressPrefix')]"
+                    ]
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2021-02-01",
+            "condition": "[parameters('enablePrivateNetwork')]",
+            "name": "[concat(variables('vnetName'), '/', variables('snetContainerAppName'))]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgContainerAppName'))]"
+            ],
+            "properties": {
+                "addressPrefix": "[variables('snetContainerAppAddressPrefix')]",
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgContainerAppName'))]"
+                },
+                "delegations": [
+                    {
+                        "name": "Microsoft.App/environments",
+                        "id": "[variables('environmentResourceID')]",
+                        "type": "Microsoft.Network/availableDelegations",
+                        "properties": {
+                            "serviceName": "Microsoft.App/environments"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2021-02-01",
+            "condition": "[parameters('enablePrivateNetwork')]",
+            "name": "[concat(variables('vnetName'), '/', variables('snetLogAnalyticsName'))]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[variables('vnetResourceID')]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgLogAnalyticsName'))]"
+            ],
+            "properties": {
+                "addressPrefix": "[variables('snetLogAnalyticsAddressPrefix')]",
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgLogAnalyticsName'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2021-02-01",
+            "condition": "[parameters('enablePrivateNetwork')]",
+            "name": "[variables('nsgContainerAppName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": []
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2021-02-01",
+            "condition": "[parameters('enablePrivateNetwork')]",
+            "name": "[variables('nsgLogAnalyticsName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": []
+            }
+        },
+        {
+            "type": "Microsoft.Insights/components",
+            "condition": "[parameters('enableLogging')]",
+            "kind": "web",
+            "apiVersion": "2020-02-02",
+            "name": "[variables('appInsightsName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "Application_Type": "web",
+                "WorkspaceResourceId": "[variables('logAnalyticsResourceID')]"
+
+            }
+        },
+        {
+            "type": "Microsoft.OperationalInsights/workspaces",
+            "condition": "[parameters('enableLogging')]",
+            "apiVersion": "2023-09-01",
+            "name": "[variables('logAnalyticsName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "sku": {
+                    "name": "pergb2018"
+                }
+            }
+        },
+        {
+            "type": "microsoft.insights/privateLinkScopes",
+            "condition": "[and(parameters('enableLogging'), parameters('enablePrivateNetwork'))]",
+            "apiVersion": "2021-07-01-preview",
+            "name": "[variables('logAnalyticsPrivateLinkScopeName')]",
+            "location": "global",
+            "properties": {
+                "accessModeSettings": {
+                    "ingestionAccessMode": "PrivateOnly",
+                    "queryAccessMode": "PrivateOnly"
+                },
+                "resources": [
+                    {
+                        "id": "[variables('logAnalyticsResourceID')]"
+                    },
+                    {
+                        "id": "[variables('appInsightsResourceID')]"
+                    }
+                ]
+            }
+        },
+        {
+            "location": "[resourceGroup().location]",
+            "name": "[variables('logAnalyticsPrivateEndpointName')]",
+            "condition": "[and(parameters('enableLogging'), parameters('enablePrivateNetwork'))]",
+            "dependsOn": [
+                "[variables('snetLogAnalyticsResourceID')]"
+            ],
+            "type": "Microsoft.Network/privateEndpoints",
+            "apiVersion": "2021-05-01",
+            "properties": {
+                "subnet": {
+                    "id": "[variables('snetLogAnalyticsResourceID')]"
+                },
+                "customNetworkInterfaceName": "[variables('logAnalyticsNicName')]",
+                "privateLinkServiceConnections": [
+                    {
+                        "name": "[variables('logAnalyticsPrivateLinkScopeName')]",
+                        "properties": {
+                            "privateLinkServiceId": "[resourceId('microsoft.insights/privateLinkScopes', variables('logAnalyticsPrivateLinkScopeName'))]",
+                            "groupIds": [
+                                "azuremonitor"
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+            "condition": "[and(parameters('enableLogging'), parameters('enablePrivateNetwork'))]",
+            "apiVersion": "2018-09-01",
+            "name": "[concat('privatelink.monitor.azure.com', '/', variables('logAnalyticsName'), '-link')]",
+            "location": "global",
+            "dependsOn": [
+                "[variables('vnetResourceID')]",
+                "[variables('privateDnsZoneID')]"
+            ],
+            "properties": {
+                "virtualNetwork": {
+                    "id": "[variables('vnetResourceID')]"
+                },
+                "registrationEnabled": false
+            }
+        },
+        {
+            "type": "Microsoft.Network/privateDnsZones",
+            "condition": "[and(parameters('enableLogging'), parameters('enablePrivateNetwork'))]",
+            "apiVersion": "2018-09-01",
+            "name": "privatelink.monitor.azure.com",
+            "location": "global",
+            "properties": {}
+        },
+        {
+            "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+            "condition": "[and(parameters('enableLogging'), parameters('enablePrivateNetwork'))]",
+            "apiVersion": "2021-05-01",
+            "name": "[concat(variables('logAnalyticsPrivateEndpointName'), '/', 'default')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[variables('privateDnsZoneID')]",
+                "[variables('logAnalyticsPrivateEndpointID')]"
+            ],
+            "properties": {
+                "privateDnsZoneConfigs": [
+                    {
+                        "name": "privatelink-monitor-azure-com",
+                        "properties": {
+                            "privateDnsZoneId": "[variables('privateDnsZoneID')]"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2023-05-01",
+            "name": "[variables('environmentName')]",
+            "type": "Microsoft.App/managedEnvironments",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[variables('snetContainerAppResourceID')]"
+            ],
+            "properties": {
+                "zoneRedundant": false,
+                "workloadProfiles": [
+                    {
+                        "workloadProfileType": "[if(equals(parameters('workloadProfile'), 'Consumption'), 'Consumption', 'D4')]",
+                        "name": "[parameters('workloadProfile')]",
+                        "minimumCount": "[if(equals(parameters('workloadProfile'), 'Consumption'), null(), 1)]",
+                        "maximumCount": "[if(equals(parameters('workloadProfile'), 'Consumption'), null(), 3)]"
+                    }
+                ],
+                "vnetConfiguration": {
+                    "infrastructureSubnetId": "[if(parameters('enablePrivateNetwork'), variables('snetContainerAppResourceID'), null())]",
+                    "internal": "[if(parameters('enablePrivateNetwork'), true(), false() )]"
+                }
+            }
+        },
+        {
+            "apiVersion": "2023-05-01",
+            "name": "[variables('containerAppName')]",
+            "type": "Microsoft.App/containerApps",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[variables('environmentResourceID')]"
+            ],
+            "properties": {
+                "environmentId": "[variables('environmentResourceID')]",
+                "configuration": {
+                    "activeRevisionsMode": "Single",
+                    "ingress": {
+                        "external": true,
+                        "transport": "auto",
+                        "targetPort": 80,
+                        "allowInsecure": false
+                    }
+                },
+                "template": {
+                    "containers": [
+                        {
+                            "name": "[variables('containerName')]",
+                            "image": "[parameters('containerImage')]",
+                            "resources": {
+                                "cpu": 3,
+                                "memory": "6Gi"
+                            }
+                        }
+                    ],
+                    "scale": {
+                        "minReplicas": 1,
+                        "maxReplicas": 3
+                    }
+                },
+                "workloadProfileName": "[parameters('workloadProfile')]"
+            }
+        },
+        {
+            "apiVersion": "2024-03-01",
+            "type": "Microsoft.Resources/deployments",
+            "name": "setEnvironmentVariables",
+            "dependsOn": [
+                "[variables('containerAppResourceID')]"
+            ],
+            "properties": {
+                "mode": "Incremental",
+                "parameters": {},
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.1",
+                    "parameters": {},
+                    "variables": {
+                    },
+                    "resources": [
+                        {
+                            "apiVersion": "2023-05-01",
+                            "name": "[variables('containerAppName')]",
+                            "type": "Microsoft.App/containerApps",
+                            "location": "[resourceGroup().location]",
+                            "properties": {
+                                "environmentId": "[variables('environmentResourceID')]",
+                                "configuration": {
+                                    "activeRevisionsMode": "[reference(variables('containerAppName')).configuration.activeRevisionsMode]",
+                                    "ingress": {
+                                        "external": "[reference(variables('containerAppName')).configuration.ingress.external]",
+                                        "transport": "[reference(variables('containerAppName')).configuration.ingress.transport]",
+                                        "targetPort": "[reference(variables('containerAppName')).configuration.ingress.targetPort]",
+                                        "allowInsecure": "[reference(variables('containerAppName')).configuration.ingress.allowInsecure]"
+                                    }
+                                },
+                                "template": {
+                                    "containers": [
+                                        {
+                                            "name": "[reference(variables('containerAppName')).template.containers[0].name]",
+                                            "image": "[reference(variables('containerAppName')).template.containers[0].image]",
+                                            "resources": {
+                                                "cpu": "[reference(variables('containerAppName')).template.containers[0].resources.cpu]",
+                                                "memory": "[reference(variables('containerAppName')).template.containers[0].resources.memory]"
+                                            },
+                                            "env": [
+                                                {
+                                                    "name": "TENANT_ID",
+                                                    "value": "[subscription().tenantId]"
+                                                },
+                                                {
+                                                    "name": "CLIENT_ID",
+                                                    "value": "[parameters('clientId')]"
+                                                },
+                                                {
+                                                    "name": "REDIRECT_URI",
+                                                    "value": "[concat('https://', reference(variables('containerAppName')).configuration.ingress.fqdn, '/')]"
+                                                },
+                                                {
+                                                    "name": "DOMAIN_NAME",
+                                                    "value": "[parameters('entitlementsDomainName')]"
+                                                },
+                                                {
+                                                    "name": "SCOPE",
+                                                    "value": "[parameters('scope')]"
+                                                },
+                                                {
+                                                    "name": "OSDU_ENDPOINT",
+                                                    "value": "[variables('osduEndpoint')]"
+                                                },
+                                                {
+                                                    "name": "DATA_PARTITION_ID",
+                                                    "value": "[parameters('dataPartitionId')]"
+                                                },
+                                                {
+                                                    "name": "GRAPH_ENDPOINT",
+                                                    "value": "https://graph.microsoft.com/v1.0/"
+                                                },
+                                                {
+                                                    "name": "OSDU_CONNECTOR_API_ENDPOINT",
+                                                    "value": "[variables('connectorEndpoint')]"
+                                                },
+                                                {
+                                                    "name": "APPINSIGHTS_INSTRUMENTATIONKEY",
+                                                    "value": "[if(parameters('enableLogging'), reference(variables('appInsightsName')).InstrumentationKey, '')]"
+                                                }
+                                            ]
+                                        }
+                                    ],
+                                    "scale": {
+                                        "minReplicas": "[reference(variables('containerAppName')).template.scale.minReplicas]",
+                                        "maxReplicas": "[reference(variables('containerAppName')).template.scale.maxReplicas]"
+                                    }
+                                },
+                                "workloadProfileName": "[reference(variables('containerAppName')).workloadProfileName]"
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+    ],
+    "outputs": {
+        "Admin UI Endpoint": {
+            "type": "string",
+            "value": "[concat('https://', reference(variables('containerAppName')).configuration.ingress.fqdn, '/')]"
+        },
+        "Publicly Accessible?": {
+            "type": "string",
+            "value": "[if(parameters('enablePrivateNetwork'), 'No, you will need to connect through a routable virtual network or an ingress controller.', 'Yes, you can access the Admin UI over internet.')]"
+        },
+        "IMPORTANT": {
+            "type": "string",
+            "value": "Remember to add the Admin UI Endpoint to your CORS configuration on the ADME instance and as a Single-Page App redirect URI on the App Registration."
+        }
+    }
+}
