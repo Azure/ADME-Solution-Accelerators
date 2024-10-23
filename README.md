@@ -6,9 +6,10 @@ This repository contains references to Azure Data Manager for Energy (ADME) Solu
 
 | Solution | Description |
 |----------|-------------|
+| [AI Search for unstructured data in RAG](https://github.com/joasoze/AI_Search_Python/tree/main) | Creating, populating and using AI Search indexes for RAG (Retrieval Augumented Generation) solutions. Python examples.|
 | [Azure OpenAI integration](https://aka.ms/admeoai) | Example of integrating Azure OpenAI with your ADME data to be able to chat with your data |
 | [Microsoft Fabric Consumption Zone](https://github.com/Azure-Samples/ADME-Enterprise-Consumption-Zone-on-Fabric) | Creates an OSDU consumption zone of the metadata stored in Azure Data Manager for Energy |
-| [AI Search for unstructured data in RAG](https://github.com/joasoze/AI_Search_Python/tree/main) | Creating, populating and using AI Search indexes for RAG (Retrieval Augumented Generation) solutions. Python examples.|
+
 
 ## How-to Guides
 
