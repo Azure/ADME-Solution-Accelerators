@@ -42,11 +42,11 @@
             "minLength": 26,
             "maxLength": 41
         },
-        "dataPartitionId": {
+        "dataPartitionIds": {
             "type": "string",
             "defaultValue": "opendes",
             "metadata": {
-                "description": "The data partition ID to use."
+                "description": "Comma-separated list of data partition IDs."
             },
             "minLength": 1,
             "maxLength": 31
