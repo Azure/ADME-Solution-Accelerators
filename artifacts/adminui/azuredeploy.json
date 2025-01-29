@@ -44,7 +44,7 @@
         },
         "dataPartitionIdss": {
             "type": "string",
-            "defaultValue": "opendes",
+            "defaultValue": "data",
             "metadata": {
                 "description": "Comma-separated list of data partition IDs."
             },
