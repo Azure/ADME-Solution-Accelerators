@@ -42,7 +42,7 @@
             "minLength": 26,
             "maxLength": 41
         },
-        "dataPartitionIds": {
+        "dataPartitionIdss": {
             "type": "string",
             "defaultValue": "opendes",
             "metadata": {
@@ -455,7 +455,7 @@
                                                 },
                                                 {
                                                     "name": "DATA_PARTITION_ID",
-                                                    "value": "[parameters('dataPartitionId')]"
+                                                    "value": "[parameters('dataPartitionIds')]"
                                                 },
                                                 {
                                                     "name": "GRAPH_ENDPOINT",
