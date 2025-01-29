@@ -42,7 +42,7 @@
             "minLength": 26,
             "maxLength": 41
         },
-        "dataPartitionIdss": {
+        "dataPartitionIds": {
             "type": "string",
             "defaultValue": "data",
             "metadata": {
